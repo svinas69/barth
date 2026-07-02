@@ -11,6 +11,91 @@ uses this naming convention).
 - `ff` = IN1, `fv` = IN2, `pressure` = IN3 (boolean inputs)
 - `valve1` = OUT3, `valve2` = OUT4 (boolean outputs)
 
+## Block Diagram
+
+```mermaid
+flowchart LR
+    ff([ff / IN1])
+    fv([fv / IN2])
+    pressure([pressure / IN3])
+    valve1([valve1 / OUT3])
+    valve2([valve2 / OUT4])
+
+    subgraph S1["Stage 1 — Start/stop detect"]
+        AND1["AND"]
+        TON1["TON 2s"]
+        RTRIG1["R_TRIG"]
+        AND1 --> TON1 --> RTRIG1
+    end
+    ff --> AND1
+    fv --> AND1
+    RTRIG1 -->|StartStopPulse| TFF1
+
+    subgraph S2["Stage 2 — Abort detect"]
+        NOT1["NOT"]
+        NOT2["NOT"]
+        AND2["AND"]
+        AND3["AND"]
+        OR1["OR"]
+        NOT1 --> AND2
+        NOT2 --> AND3
+        AND2 --> OR1
+        AND3 --> OR1
+    end
+    fv --> NOT1
+    ff --> AND2
+    ff --> NOT2
+    fv --> AND3
+    OR1 -->|AbortCondition| TFF1
+
+    subgraph S3["Stage 3 — Cycle-enable toggle"]
+        TFF1["TFF\nToggle+Reset"]
+    end
+    TFF1 -->|InAutoCycle| AND4
+    TFF1 -->|InAutoCycle| NOT3
+    TFF1 -->|InAutoCycle| AND5
+    TFF1 -->|InAutoCycle| AND6
+
+    subgraph S4["Stage 4 — Pressure-gated delay"]
+        RTRIG2["R_TRIG"]
+        AND4["AND"]
+        TP1["TP 2s"]
+        FTRIG1["F_TRIG"]
+        RTRIG2 --> AND4 --> TP1 --> FTRIG1
+    end
+    pressure --> RTRIG2
+    FTRIG1 -->|ValveSwitchPulse| TFF2
+
+    subgraph S5["Stage 5 — Step toggle"]
+        NOT3["NOT"]
+        TFF2["TFF\nToggle+Reset"]
+        NOT3 -->|NotInCycle| TFF2
+    end
+    TFF2 -->|StepB| NOT4
+    TFF2 -->|StepB| AND6
+    NOT3 -->|NotInCycle| AND7
+    NOT3 -->|NotInCycle| AND8
+
+    subgraph S6["Stage 6 — Output logic"]
+        NOT4["NOT"]
+        AND5["AND"]
+        AND6["AND"]
+        AND7["AND"]
+        AND8["AND"]
+        OR2["OR"]
+        OR3["OR"]
+        NOT4 --> AND5
+        AND5 --> OR2
+        AND6 --> OR3
+        AND7 --> OR2
+        AND8 --> OR3
+    end
+    ff --> AND7
+    fv --> AND8
+    OR2 --> valve1
+    OR3 --> valve2
+```
+
 ## Stage 1 — Start/stop detection (ff+fv held ≥2s)
 | Block | Type (likely German name) | Inputs | Output |
 |---|---|---|---|
