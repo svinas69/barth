@@ -25,27 +25,21 @@ Block names/pins below are confirmed from Barth's own reference
 - `valve1` = OUT3, `valve2` = OUT4 (boolean)
 
 ## Stage 0 — Hardware I/O binding
-Also confirmed from the I/O Blocks reference:
+Confirmed from the official STG-650 hardware manual (Barth doc 9021-0009-A, §5.2.3/§7.1.3):
+- **IN1–IN6** are "selectable analog/digital inputs" — either function block (`Digital Input` or `Analog Input`) can read them.
+- **IN7–IN10** are pure digital inputs only (up to 1 kHz).
+- Wiring: thanks to an internal pull-down resistor on every input, any NO/NC switch is wired directly **between the positive supply (VDD) and the input pin** (not to GND) — idle = LOW, closed = HIGH.
+- Outputs OUT1–OUT8 are highside solid-state switches, ≤1.5 A each, ≤6 A combined; OUT9 is the lowside PWM output. `valve1`=OUT3 and `valve2`=OUT4 are both plain OUT1–OUT8 type outputs.
 
-| Block | Port field | Notes |
-|---|---|---|
-| `Digital Input` | IN1 or IN2 only | Q (BIT) output. Barth's own doc explicitly limits this block's port selector to **IN1/IN2 only**. |
-| `Analog Input` | IN1..IN10 | outputs `Value` (FLOAT, volts) — not a boolean |
-| `Digital Output` | OUT1..OUT9 | P (BIT) input, routes to the selected output port |
+Since `ff`(IN1), `fv`(IN2), and `pressure`(IN3) all fall in the IN1–IN6 range, and the pressure switch is a simple on/off contact, **all three read directly through the `Digital Input` block** — no analog/threshold workaround needed.
 
-Build:
 | Block | Config | Output |
 |---|---|---|
 | DIN1 (Digital Input) | port=IN1 | **ff** |
 | DIN2 (Digital Input) | port=IN2 | **fv** |
+| DIN3 (Digital Input) | port=IN3 | **pressure** |
 | DOUT1 (Digital Output) | port=OUT3, P=valve1 signal | drives OUT3 |
 | DOUT2 (Digital Output) | port=OUT4, P=valve2 signal | drives OUT4 |
-
-**⚠️ Open issue — `pressure` on IN3:** the `Digital Input` block's documented port list is only IN1/IN2, not IN3. IN3 would have to go through `Analog Input` (returns a voltage, e.g. `Value`), and I could not find any comparator/threshold/hysteresis block in miCon-L's documented library (checked Numeric(FLOAT), Arithmetic, Converter, Control Elements categories — none convert FLOAT→BIT by comparison). Two ways to resolve this, and I need you to pick one before Stage 4 can be wired for real:
-1. **Rewire the pressure switch to IN1 or IN2** (if ff/fv can move to another digital-capable port, or if the STG-650 actually has more digital-capable inputs than this doc excerpt shows — worth checking the STG-650 hardware datasheet itself, not just the miCon-L software docs).
-2. **Confirm with Barth support / the datasheet** whether a comparator block exists under a category not listed here, or whether `Analog Input` has an undocumented digital threshold mode.
-
-Everything below assumes `pressure` is already available as a BIT signal — swap in whatever block ends up producing it once this is resolved.
 
 ## Toggle-from-pulse pattern (used twice below)
 To get a toggle output `Q` from a one-scan trigger pulse `Trig`, with a priority `Reset`:
@@ -131,13 +125,13 @@ flowchart LR
     subgraph S0["Stage 0 — Hardware I/O binding"]
         DIN1["Digital Input\nport=IN1"]
         DIN2["Digital Input\nport=IN2"]
-        AIN3["Analog Input\nport=IN3\n⚠️ no confirmed\nFLOAT→BIT block"]
+        DIN3["Digital Input\nport=IN3"]
         DOUT1["Digital Output\nport=OUT3"]
         DOUT2["Digital Output\nport=OUT4"]
     end
     IN1 --> DIN1
     IN2 --> DIN2
-    IN3 --> AIN3
+    IN3 --> DIN3
     DOUT1 --> OUT3
     DOUT2 --> OUT4
     DIN1 -->|ff| AND1
@@ -148,7 +142,7 @@ flowchart LR
     DIN1 -->|ff| AND3
     DIN1 -->|ff| AND11
     DIN2 -->|fv| AND12
-    AIN3 -.->|"? pressure"| REDGE2
+    DIN3 -->|pressure| REDGE2
 
     subgraph S1["Stage 1 — Start/stop detect"]
         AND1["AND"]
@@ -248,7 +242,11 @@ Steps:
 5. Connect the VK-16 to the STG-650 and download via the connector icon.
 6. Use online monitoring (block highlighting) to verify `ff`/`fv`/`pressure` read correctly and `valve1`/`valve2` toggle as expected before connecting real valves.
 
+## Physical Wiring Notes (from STG-650 manual §5.2.3/§5.2.4)
+- Wire `ff`, `fv`, and the pressure switch each between **VDD (+)** and their input pin (IN1, IN2, IN3) — not to GND. Internal pull-downs mean idle=LOW, closed=HIGH.
+- All inputs are 0–32 VDC tolerant, common GND, no potential isolation.
+- OUT3/OUT4 (valve1/valve2) are highside switches: a logic HIGH connects VDD to the output pin. Valve solenoid coils must not exceed 1.5 A each (6 A combined across OUT1–OUT8).
+
 ## Not yet defined
-- Resolution of the `pressure`/IN3 digital-vs-analog issue above (blocks Stage 4 wiring)
 - Power-up initial state (assume all FFR latches reset to 0, i.e. MANUAL, valve1/valve2 off)
 - Emergency-stop input, if any
