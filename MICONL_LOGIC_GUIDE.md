@@ -24,6 +24,29 @@ Block names/pins below are confirmed from Barth's own reference
 - `ff` = IN1, `fv` = IN2, `pressure` = IN3 (boolean)
 - `valve1` = OUT3, `valve2` = OUT4 (boolean)
 
+## Stage 0 — Hardware I/O binding
+Also confirmed from the I/O Blocks reference:
+
+| Block | Port field | Notes |
+|---|---|---|
+| `Digital Input` | IN1 or IN2 only | Q (BIT) output. Barth's own doc explicitly limits this block's port selector to **IN1/IN2 only**. |
+| `Analog Input` | IN1..IN10 | outputs `Value` (FLOAT, volts) — not a boolean |
+| `Digital Output` | OUT1..OUT9 | P (BIT) input, routes to the selected output port |
+
+Build:
+| Block | Config | Output |
+|---|---|---|
+| DIN1 (Digital Input) | port=IN1 | **ff** |
+| DIN2 (Digital Input) | port=IN2 | **fv** |
+| DOUT1 (Digital Output) | port=OUT3, P=valve1 signal | drives OUT3 |
+| DOUT2 (Digital Output) | port=OUT4, P=valve2 signal | drives OUT4 |
+
+**⚠️ Open issue — `pressure` on IN3:** the `Digital Input` block's documented port list is only IN1/IN2, not IN3. IN3 would have to go through `Analog Input` (returns a voltage, e.g. `Value`), and I could not find any comparator/threshold/hysteresis block in miCon-L's documented library (checked Numeric(FLOAT), Arithmetic, Converter, Control Elements categories — none convert FLOAT→BIT by comparison). Two ways to resolve this, and I need you to pick one before Stage 4 can be wired for real:
+1. **Rewire the pressure switch to IN1 or IN2** (if ff/fv can move to another digital-capable port, or if the STG-650 actually has more digital-capable inputs than this doc excerpt shows — worth checking the STG-650 hardware datasheet itself, not just the miCon-L software docs).
+2. **Confirm with Barth support / the datasheet** whether a comparator block exists under a category not listed here, or whether `Analog Input` has an undocumented digital threshold mode.
+
+Everything below assumes `pressure` is already available as a BIT signal — swap in whatever block ends up producing it once this is resolved.
+
 ## Toggle-from-pulse pattern (used twice below)
 To get a toggle output `Q` from a one-scan trigger pulse `Trig`, with a priority `Reset`:
 - `S = AND(Trig, Q negated)` — feed the FFR's own `Q` back into this AND with that pin negated
@@ -99,11 +122,33 @@ Note: right after an abort (ff or fv held alone), `InAutoCycle` drops to 0 and m
 
 ```mermaid
 flowchart LR
-    ff([ff / IN1])
-    fv([fv / IN2])
-    pressure([pressure / IN3])
-    valve1([valve1 / OUT3])
-    valve2([valve2 / OUT4])
+    IN1([Terminal IN1])
+    IN2([Terminal IN2])
+    IN3([Terminal IN3])
+    OUT3([Terminal OUT3])
+    OUT4([Terminal OUT4])
+
+    subgraph S0["Stage 0 — Hardware I/O binding"]
+        DIN1["Digital Input\nport=IN1"]
+        DIN2["Digital Input\nport=IN2"]
+        AIN3["Analog Input\nport=IN3\n⚠️ no confirmed\nFLOAT→BIT block"]
+        DOUT1["Digital Output\nport=OUT3"]
+        DOUT2["Digital Output\nport=OUT4"]
+    end
+    IN1 --> DIN1
+    IN2 --> DIN2
+    IN3 --> AIN3
+    DOUT1 --> OUT3
+    DOUT2 --> OUT4
+    DIN1 -->|ff| AND1
+    DIN2 -->|fv| AND1
+    DIN1 -->|ff| AND2
+    DIN2 -->|fv| AND2
+    DIN2 -->|fv| AND3
+    DIN1 -->|ff| AND3
+    DIN1 -->|ff| AND11
+    DIN2 -->|fv| AND12
+    AIN3 -.->|"? pressure"| REDGE2
 
     subgraph S1["Stage 1 — Start/stop detect"]
         AND1["AND"]
@@ -111,8 +156,6 @@ flowchart LR
         REDGE1["Rising Edge"]
         AND1 --> ONDELAY1 --> REDGE1
     end
-    ff --> AND1
-    fv --> AND1
     REDGE1 -->|StartStopPulse| AND4
     REDGE1 -->|StartStopPulse| AND5
 
@@ -123,10 +166,6 @@ flowchart LR
         AND2 --> OR1
         AND3 --> OR1
     end
-    ff --> AND2
-    fv --> AND2
-    fv --> AND3
-    ff --> AND3
     OR1 -->|AbortCondition| OR2
 
     subgraph S3["Stage 3 — Cycle-enable toggle"]
@@ -154,7 +193,6 @@ flowchart LR
         REDGE2 --> AND6 -->|GatedPressureEdge| FFR2
         FFR2 -->|Waiting| ONDELAY2 --> REDGE3
     end
-    pressure --> REDGE2
     REDGE3 -.feedback R.-> FFR2
     REDGE3 -->|ValveSwitchPulse| AND7
     REDGE3 -->|ValveSwitchPulse| AND8
@@ -189,12 +227,28 @@ flowchart LR
         AND11 --> OR4
         AND12 --> OR5
     end
-    ff --> AND11
-    fv --> AND12
-    OR4 --> valve1
-    OR5 --> valve2
+    OR4 -->|valve1| DOUT1
+    OR5 -->|valve2| DOUT2
 ```
 
+## Project Setup, Build & Download
+Confirmed from the shipped `VALVE` template project files (`VALVE.INI`, `VALVE.IWS`):
+- Software: miCon-L 7.1 R1
+- Target: STG-650 (only 1 program task is possible per the template's own comment)
+- Cycle time: 200 ms (`VALVE.IWS` → `cycletime=200`)
+- Libraries used: `LIB`, `LIB\STANDARD`, `LIB\STG-650`, `SYSTEM`, `BIN\ADDON`, `LIB\CANLayer2`
+- Programmer/interface: VK-16 (USB/TTL232)
+- COM port must be set once per project — via the "Extras" menu or the connector icon in the toolbar
+
+Steps:
+1. Create/open the project targeting STG-650, single program task (as in the `VALVE` template's `$STG-650_TASK` worksheet).
+2. Set the COM port for the VK-16 programmer via Extras → COM-Port Parameter.
+3. Build the diagram per Stages 0–6 above on the task worksheet.
+4. Compile/build the project in miCon-L.
+5. Connect the VK-16 to the STG-650 and download via the connector icon.
+6. Use online monitoring (block highlighting) to verify `ff`/`fv`/`pressure` read correctly and `valve1`/`valve2` toggle as expected before connecting real valves.
+
 ## Not yet defined
+- Resolution of the `pressure`/IN3 digital-vs-analog issue above (blocks Stage 4 wiring)
 - Power-up initial state (assume all FFR latches reset to 0, i.e. MANUAL, valve1/valve2 off)
 - Emergency-stop input, if any
