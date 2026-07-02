@@ -9,9 +9,9 @@
 ### Inputs
 | Terminal | Label | Meaning |
 |---|---|---|
-| IN1 | ff | Forward push button |
-| IN2 | fv | Backward push button |
-| IN3 | pressure | Pressure sensor/switch |
+| IN7 | ff | Forward push button |
+| IN8 | fv | Backward push button |
+| IN9 | pressure | Pressure sensor/switch |
 
 ### Outputs
 | Terminal | Label | Meaning |

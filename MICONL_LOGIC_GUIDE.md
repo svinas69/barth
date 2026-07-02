@@ -21,23 +21,23 @@ Block names/pins below are confirmed from Barth's own reference
 **There is no toggle/impulse-relay/T-flip-flop block and no pulse (monoflop) timer** in miCon-L. Both are built below from the primitives above — this is the actual implementation, not a fallback.
 
 ## I/O tags
-- `ff` = IN1, `fv` = IN2, `pressure` = IN3 (boolean)
+- `ff` = IN7, `fv` = IN8, `pressure` = IN9 (boolean)
 - `valve1` = OUT3, `valve2` = OUT4 (boolean)
 
 ## Stage 0 — Hardware I/O binding
 Confirmed from the official STG-650 hardware manual (Barth doc 9021-0009-A, §5.2.3/§7.1.3):
 - **IN1–IN6** are "selectable analog/digital inputs" — either function block (`Digital Input` or `Analog Input`) can read them.
-- **IN7–IN10** are pure digital inputs only (up to 1 kHz).
+- **IN7–IN10** are pure digital inputs only (up to 1 kHz) — no analog option, so no ambiguity for `Digital Input` block port selection.
 - Wiring: thanks to an internal pull-down resistor on every input, any NO/NC switch is wired directly **between the positive supply (VDD) and the input pin** (not to GND) — idle = LOW, closed = HIGH.
 - Outputs OUT1–OUT8 are highside solid-state switches, ≤1.5 A each, ≤6 A combined; OUT9 is the lowside PWM output. `valve1`=OUT3 and `valve2`=OUT4 are both plain OUT1–OUT8 type outputs.
 
-Since `ff`(IN1), `fv`(IN2), and `pressure`(IN3) all fall in the IN1–IN6 range, and the pressure switch is a simple on/off contact, **all three read directly through the `Digital Input` block** — no analog/threshold workaround needed.
+`ff`(IN7), `fv`(IN8), and `pressure`(IN9) all fall in the IN7–IN10 pure-digital range, so **all three read directly through the `Digital Input` block**.
 
 | Block | Config | Output |
 |---|---|---|
-| DIN1 (Digital Input) | port=IN1 | **ff** |
-| DIN2 (Digital Input) | port=IN2 | **fv** |
-| DIN3 (Digital Input) | port=IN3 | **pressure** |
+| DIN1 (Digital Input) | port=IN7 | **ff** |
+| DIN2 (Digital Input) | port=IN8 | **fv** |
+| DIN3 (Digital Input) | port=IN9 | **pressure** |
 | DOUT1 (Digital Output) | port=OUT3, P=valve1 signal | drives OUT3 |
 | DOUT2 (Digital Output) | port=OUT4, P=valve2 signal | drives OUT4 |
 
@@ -116,22 +116,22 @@ Note: right after an abort (ff or fv held alone), `InAutoCycle` drops to 0 and m
 
 ```mermaid
 flowchart LR
-    IN1([Terminal IN1])
-    IN2([Terminal IN2])
-    IN3([Terminal IN3])
+    IN7([Terminal IN7])
+    IN8([Terminal IN8])
+    IN9([Terminal IN9])
     OUT3([Terminal OUT3])
     OUT4([Terminal OUT4])
 
     subgraph S0["Stage 0 — Hardware I/O binding"]
-        DIN1["Digital Input\nport=IN1"]
-        DIN2["Digital Input\nport=IN2"]
-        DIN3["Digital Input\nport=IN3"]
+        DIN1["Digital Input\nport=IN7"]
+        DIN2["Digital Input\nport=IN8"]
+        DIN3["Digital Input\nport=IN9"]
         DOUT1["Digital Output\nport=OUT3"]
         DOUT2["Digital Output\nport=OUT4"]
     end
-    IN1 --> DIN1
-    IN2 --> DIN2
-    IN3 --> DIN3
+    IN7 --> DIN1
+    IN8 --> DIN2
+    IN9 --> DIN3
     DOUT1 --> OUT3
     DOUT2 --> OUT4
     DIN1 -->|ff| AND1
@@ -243,7 +243,7 @@ Steps:
 6. Use online monitoring (block highlighting) to verify `ff`/`fv`/`pressure` read correctly and `valve1`/`valve2` toggle as expected before connecting real valves.
 
 ## Physical Wiring Notes (from STG-650 manual §5.2.3/§5.2.4)
-- Wire `ff`, `fv`, and the pressure switch each between **VDD (+)** and their input pin (IN1, IN2, IN3) — not to GND. Internal pull-downs mean idle=LOW, closed=HIGH.
+- Wire `ff`, `fv`, and the pressure switch each between **VDD (+)** and their input pin (IN7, IN8, IN9) — not to GND. Internal pull-downs mean idle=LOW, closed=HIGH.
 - All inputs are 0–32 VDC tolerant, common GND, no potential isolation.
 - OUT3/OUT4 (valve1/valve2) are highside switches: a logic HIGH connects VDD to the output pin. Valve solenoid coils must not exceed 1.5 A each (6 A combined across OUT1–OUT8).
 
